@@ -1,0 +1,99 @@
+% Licensed under the Apache License, Version 2.0 (the "License"); you may not
+% use this file except in compliance with the License. You may obtain a copy of
+% the License at
+%
+%   http://www.apache.org/licenses/LICENSE-2.0
+%
+% Unless required by applicable law or agreed to in writing, software
+% distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+% License for the specific language governing permissions and limitations under
+% the License.
+
+%%% @author CA Meijer
+%%% @copyright 2012 CA Meijer
+%%% @doc MongoDB GridFS API. This module provides functions for creating, reading, updating and 
+%%       deleting files from GridFS. The exported functions exposed are similar to the CRUD 
+%%       functions exposed by the mongo API of the MongoDB driver. 
+%%% @end
+
+-module(gridfs).
+
+-behaviour(gen_server).
+
+%% Includes
+-include("gridfs.hrl").
+
+%% Types
+-type(action() :: fun()).
+
+%% API
+-export([delete/1,
+		 delete/2]).
+
+%% gen_server callbacks
+-export([init/1, 
+		 handle_call/3, 
+		 handle_cast/2, 
+		 handle_info/2, 
+		 terminate/2, 
+		 code_change/3]).
+
+%% External functions
+
+%@doc Deletes files matching the selector from the fs.files and fs.chunks collections.
+-spec(delete(bson:document()) -> ok).
+delete(Selector) ->
+	delete(fs, Selector).
+
+%@doc Deletes files matching the selector from the specified bucket.
+-spec(delete(atom(), bson:document()) -> ok).
+delete(Bucket, Selector) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
+	Cursor = mongo:find(FilesColl, Selector, {'_id', 1}),
+	Files = mongo_cursor:rest(Cursor),
+	mongo_cursor:close(Cursor),
+	Ids = [Id || {'_id', Id} <- Files],
+	mongo:delete(ChunksColl, {files_id, {'$in', Ids}}),
+	mongo:delete(FilesColl, {'_id', {'$in', Ids}}).
+
+
+%% Server functions
+
+%% @doc Initializes the server with a write mode, read mode, a connection and database.
+-spec(init([State::#gridfs_connection{}]) -> {ok, State::#gridfs_connection{}}).
+init([State]) ->
+    {ok, State}.
+
+%% @doc Responds synchronously to server calls.  The action of the do/5 function is executed by
+%%      this function. The process is stopped after this call.
+-spec(handle_call({do, action()}, pid(), #gridfs_connection{}) -> {stop, normal, any(), #gridfs_connection{}}).
+handle_call({do, Action}=_Request, _From, State) ->
+    Reply = mongo:do(State#gridfs_connection.write_mode, State#gridfs_connection.read_mode, 
+					 State#gridfs_connection.connection, State#gridfs_connection.database,
+					 fun() ->
+							 put(gridfs_state, State),
+							 Action()
+					 end),
+    {stop, normal, Reply, State}.
+
+%% @doc Responds asynchronously to messages. The server ignores any asynchronous messages.
+-spec(handle_cast(any(), State::#gridfs_connection{}) -> {noreply, State::#gridfs_connection{}}).
+handle_cast(_Message, State) ->
+	{noreply, State}.
+
+%% @doc Responds to out-of-band messages. The server ignores any such messages.
+-spec(handle_info(any(), State::#gridfs_connection{}) -> {noreply, State::#gridfs_connection{}}).
+handle_info(_Info, State) ->
+	{noreply, State}.
+
+%% @doc Handles the shutdown of the server.
+-spec(terminate(any(), #gridfs_connection{}) -> ok).
+terminate(_Reason, _State) ->
+	ok.
+
+%% @doc Responds to code changes. Any code changes are ignored (the server's state is unchanged).
+-spec(code_change(any(), State::#gridfs_connection{}, any()) -> {ok, State::#gridfs_connection{}}).
+code_change(_OldVersion, State, _Extra) ->
+	{ok, State}.
