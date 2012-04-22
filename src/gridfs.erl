@@ -29,7 +29,10 @@
 
 %% API
 -export([delete/1,
-		 delete/2]).
+		 delete/2,
+		 delete_one/1,
+		 delete_one/2,
+		 do/5]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -58,6 +61,35 @@ delete(Bucket, Selector) ->
 	mongo:delete(ChunksColl, {files_id, {'$in', Ids}}),
 	mongo:delete(FilesColl, {'_id', {'$in', Ids}}).
 
+%@doc Deletes the first files matching the selector from the fs.files and fs.chunks collections.
+-spec(delete_one(bson:document()) -> ok).
+delete_one(Selector) ->
+	delete_one(fs, Selector).
+
+%@doc Deletes the first file matching the selector from the specified bucket.
+-spec(delete_one(atom(), bson:document()) -> ok).
+delete_one(Bucket, Selector) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
+	case mongo:find_one(FilesColl, Selector, {'_id', 1}) of
+		{{'_id', Id}} ->
+			mongo:delete(ChunksColl, {files_id, Id}),
+			mongo:delete_one(FilesColl, {'_id', Id});
+		{} ->
+			ok
+	end.
+
+%% @doc Executes an 'action' using the specified read and write modes to a database using a connection.
+%%      An 'action' is a function that takes no arguments. The fun will usually invoke functions
+%%      to do inserts, finds, modifies, deletes, etc.
+-spec(do(mongo:write_mode(), mongo:read_mode(), mongo:connection()|mongo:rs_connection(),mongo:db(), mongo:action()) -> {ok, any()}|{failure, any()}).
+do(WriteMode, ReadMode, Connection, Database, Action) ->
+	%% Since we need to store state information, we spawn a new process for this
+	%% function so that if the Action also invokes the 'do' function we don't wind up trashing
+	%% the original state.
+	ConnectionParameters = #gridfs_connection{write_mode=WriteMode, read_mode=ReadMode, connection=Connection, database=Database},
+	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters], []),
+	gen_server:call(Pid, {do, Action}, infinity).
 
 %% Server functions
 
