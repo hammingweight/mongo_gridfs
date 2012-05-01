@@ -26,7 +26,8 @@
 %% API
 -export([close/1,
 		 new/3,
-		 next/1]).
+		 next/1,
+		 rest/1]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -49,6 +50,9 @@ new(ConnectionParameters, Bucket, MongoCursor) ->
 next(Pid) ->
 	gen_server:call(Pid, next, infinity).
 
+rest(Pid) ->
+	gen_server:call(Pid, rest, infinity).
+
 %% Server functions
 
 %% @doc Initializes the server with connection parameters, a bucket and a mongo cursor.
@@ -67,7 +71,14 @@ handle_call(next, _From, State) ->
 			ConnectionParameters = State#state.connection_parameters,
 			Bucket = State#state.bucket,
 			{reply, gridfs_file:new(ConnectionParameters, Bucket, Id), State}
-	end.
+	end;
+handle_call(rest, _From, State) ->
+	MongoCursor = State#state.mongo_cursor,
+	Ids = mongo_cursor:next(MongoCursor),
+	ConnectionParameters = State#state.connection_parameters,
+	Bucket = State#state.bucket,
+	Reply = [gridfs_file:new(ConnectionParameters, Bucket, Id) || Id <- Ids],
+	{stop, normal, Reply, State}.
 
 %% @doc Handles asynchronous messages.
 handle_cast(_Msg, State) ->
