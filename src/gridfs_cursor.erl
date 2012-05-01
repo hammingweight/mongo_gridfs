@@ -74,10 +74,10 @@ handle_call(next, _From, State) ->
 	end;
 handle_call(rest, _From, State) ->
 	MongoCursor = State#state.mongo_cursor,
-	Ids = mongo_cursor:next(MongoCursor),
+	Ids = mongo_cursor:rest(MongoCursor),
 	ConnectionParameters = State#state.connection_parameters,
 	Bucket = State#state.bucket,
-	Reply = [gridfs_file:new(ConnectionParameters, Bucket, Id) || Id <- Ids],
+	Reply = [gridfs_file:new(ConnectionParameters, Bucket, Id) || {'_id', Id} <- Ids],
 	{stop, normal, Reply, State}.
 
 %% @doc Handles asynchronous messages.
