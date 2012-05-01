@@ -24,7 +24,9 @@
 -include("gridfs.hrl").
 
 %% API
--export([new/3]).
+-export([close/1,
+		 new/3,
+		 next/1]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -37,9 +39,15 @@
 -record(state, {connection_parameters, bucket, mongo_cursor}).
 
 %% External functions
+close(Pid) ->
+	gen_server:call(Pid, close, infinity).
+	
 new(ConnectionParameters, Bucket, MongoCursor) ->
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, MongoCursor], []),
 	Pid.
+
+next(Pid) ->
+	gen_server:call(Pid, next, infinity).
 
 %% Server functions
 
@@ -48,8 +56,18 @@ init([ConnectionParameters, Bucket, MongoCursor]) ->
     {ok, #state{connection_parameters=ConnectionParameters, bucket=Bucket, mongo_cursor=MongoCursor}}.
 
 %% @doc Responds synchronously to messages.
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+handle_call(close, _From, State) ->
+	{stop, normal, ok, State};
+handle_call(next, _From, State) ->
+	MongoCursor = State#state.mongo_cursor,
+	case mongo_cursor:next(MongoCursor) of
+		{} ->
+			{stop, normal, {}, State};
+		{{'_id', Id}} ->
+			ConnectionParameters = State#state.connection_parameters,
+			Bucket = State#state.bucket,
+			{reply, gridfs_file:new(ConnectionParameters, Bucket, Id), State}
+	end.
 
 %% @doc Handles asynchronous messages.
 handle_cast(_Msg, State) ->
