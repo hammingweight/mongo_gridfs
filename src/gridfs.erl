@@ -26,12 +26,15 @@
 
 %% Types
 -type(action() :: fun()).
+-type(gridfs_file() :: pid()).
 
 %% API
 -export([delete/1,
 		 delete/2,
 		 delete_one/1,
 		 delete_one/2,
+		 find_one/1,
+		 find_one/2,
 		 do/5]).
 
 %% gen_server callbacks
@@ -61,7 +64,7 @@ delete(Bucket, Selector) ->
 	mongo:delete(ChunksColl, {files_id, {'$in', Ids}}),
 	mongo:delete(FilesColl, {'_id', {'$in', Ids}}).
 
-%@doc Deletes the first files matching the selector from the fs.files and fs.chunks collections.
+%@doc Deletes the first file matching the selector from the fs.files and fs.chunks collections.
 -spec(delete_one(bson:document()) -> ok).
 delete_one(Selector) ->
 	delete_one(fs, Selector).
@@ -90,6 +93,19 @@ do(WriteMode, ReadMode, Connection, Database, Action) ->
 	ConnectionParameters = #gridfs_connection{write_mode=WriteMode, read_mode=ReadMode, connection=Connection, database=Database},
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters], []),
 	gen_server:call(Pid, {do, Action}, infinity).
+
+%@doc Finds the first file matching the selector from the fs.files and fs.chunks collections.
+-spec(find_one(bson:document()) -> pid()).
+find_one(Selector) ->
+	find_one(fs, Selector).
+
+%@doc Finds the first file matching the selector from the specified bucket.
+-spec(find_one(atom(), bson:document()) -> gridfs_file()).
+find_one(Bucket, Selector) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	{{'_id', Id}} = mongo:find_one(FilesColl, Selector, {'_id', 1}),
+	ConnectionParameters = get(gridfs_state),
+	gridfs_file:new(ConnectionParameters, Bucket, Id).
 
 %% Server functions
 

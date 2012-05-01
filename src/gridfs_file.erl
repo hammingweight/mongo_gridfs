@@ -24,7 +24,9 @@
 -include("gridfs.hrl").
 
 %% API
--export([new/3]).
+-export([close/1,
+		 file_size/1,
+		 new/3]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -37,6 +39,12 @@
 -record(state, {connection_parameters, bucket, id}).
 
 %% External functions
+close(Pid) ->
+	gen_server:call(Pid, close, infinity).
+
+file_size(Pid) ->
+	gen_server:call(Pid, file_size, infinity).
+	
 new(ConnectionParameters, Bucket, Id) ->
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id], []),
 	Pid.
@@ -50,9 +58,23 @@ init([ConnectionParameters, Bucket, Id]) ->
 
 
 %% @doc Responds synchronously to server calls.
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(close, _From, State) ->
+	{stop, normal, ok, State};
+handle_call(file_size, _From, State) ->
+	Parameters = State#state.connection_parameters,
+	WriteMode = Parameters#gridfs_connection.write_mode,
+	ReadMode = Parameters#gridfs_connection.read_mode,
+	Database = Parameters#gridfs_connection.database,
+	Conn = Parameters#gridfs_connection.connection,
+	Coll = list_to_atom(atom_to_list(State#state.bucket) ++ ".files"),
+	Id = State#state.id,
+	{ok, Size} = mongo:do(WriteMode, ReadMode, Conn, Database, 
+						  fun() ->
+								  {{length, Size}} = mongo:find_one(Coll, {'_id', Id}, {'_id', 0, length, 1}),
+								  Size
+						  end),
+	{reply, {ok, Size}, State}.
+																		
 
 %% @doc Responds to asynchronous server calls.
 handle_cast(_Msg, State) ->
