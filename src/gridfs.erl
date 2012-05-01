@@ -35,6 +35,8 @@
 		 delete_one/2,
 		 find_one/1,
 		 find_one/2,
+		 find/1,
+		 find/2,
 		 do/5]).
 
 %% gen_server callbacks
@@ -107,6 +109,15 @@ find_one(Bucket, Selector) ->
 	ConnectionParameters = get(gridfs_state),
 	gridfs_file:new(ConnectionParameters, Bucket, Id).
 
+find(Selector) ->
+	find(fs, Selector).
+
+find(Bucket, Selector) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	MongoCursor = mongo:find(FilesColl, Selector, {'_id', 1}),
+	ConnectionParameters = get(gridfs_state),
+	gridfs_cursor:new(ConnectionParameters, Bucket, MongoCursor).
+	
 %% Server functions
 
 %% @doc Initializes the server with a write mode, read mode, a connection and database.
