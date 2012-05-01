@@ -28,7 +28,9 @@
 		 file_name/1,
 		 file_size/1,
 		 new/3,
-		 md5/1]).
+		 md5/1,
+		 pread/3,
+		 read_file/1]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -57,6 +59,14 @@ new(ConnectionParameters, Bucket, Id) ->
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id], []),
 	Pid.
 
+pread(Pid, Offset, Length) ->
+	gen_server:call(Pid, {pread, Offset, Length}, infinity).
+
+read_file(Pid) ->
+	Data = gen_server:call(Pid, read_file, infinity),
+	Data.
+	
+
 %% Server functions
 
 %% @doc Initializes the server with connection parameters, a bucket and an ID.
@@ -76,8 +86,21 @@ handle_call(md5, _From, State) ->
     {reply, {ok, Md5}, State};
 handle_call(file_name, _From, State) ->
     FileName = get_attribute(State, filename),
-    {reply, {ok, FileName}, State}.
-																		
+    {reply, {ok, FileName}, State};
+handle_call(read_file, _From, State) ->
+	ChunkSize = get_attribute(State, chunkSize),
+	Length = get_attribute(State, length),
+	NumChunks = (Length + ChunkSize - 1) div ChunkSize, 
+	Reply = read(State, 0, 0, Length, NumChunks, <<>>),
+	{reply, {ok, Reply}, State};
+handle_call({pread, Offset, NumToRead}, _From, State) ->
+	ChunkSize = get_attribute(State, chunkSize),
+	Length = get_attribute(State, length),
+	NumChunks = (Length + ChunkSize - 1) div ChunkSize, 
+	ChunkNum = Offset div ChunkSize,
+	ChunkOffset = Offset rem ChunkSize,
+	Reply = read(State, ChunkNum, ChunkOffset, NumToRead, NumChunks, <<>>),
+	{reply, {ok, Reply}, State}.
 
 %% @doc Responds to asynchronous server calls.
 handle_cast(_Msg, State) ->
@@ -108,3 +131,36 @@ get_attribute(State, Attribute) ->
 												  mongo:find_one(Coll, {'_id', State#state.id}, {'_id', 0, Attribute, 1})
 										  end),
 	Value.
+
+read(_State, ChunkNum, _Offset, _NumToRead, NumberOfChunks, Result) when ChunkNum >= NumberOfChunks ->
+	Result;
+read(_State, _ChunkNum, _Offset, NumToRead, _NumberOfChunks, Result) when NumToRead =< 0 ->
+	Result;
+read(State, ChunkNum, Offset, NumToRead, NumberOfChunks, Result) ->
+	Coll = list_to_atom(atom_to_list(State#state.bucket) ++ ".chunks"),
+	Parameters = State#state.connection_parameters,
+	WriteMode = Parameters#gridfs_connection.write_mode,
+	ReadMode = Parameters#gridfs_connection.read_mode,
+	Conn = Parameters#gridfs_connection.connection,
+	Database = Parameters#gridfs_connection.database,
+	{ok, {{data,{bin, bin, BinData}}}} = mongo:do(WriteMode, ReadMode, Conn, Database,
+												  fun() ->
+														  mongo:find_one(Coll, {'files_id', State#state.id, n, ChunkNum}, {'_id', 0, data, 1})
+												  end),
+	if
+		Offset > 0 ->
+			ListData1 = binary_to_list(BinData),
+			{_, ListData2} = lists:split(Offset, ListData1),
+			BinData2 = list_to_binary(ListData2);
+		true ->
+			BinData2 = BinData
+	end,
+	if
+		size(BinData2) > NumToRead ->
+			ListData3 = binary_to_list(BinData2),
+			{ListData4, _} = lists:split(NumToRead, ListData3),
+			BinData3 = list_to_binary(ListData4),
+			<<Result/binary, BinData3/binary>>;
+		true ->
+			read(State, ChunkNum+1, 0, NumToRead-size(BinData2), NumberOfChunks, <<Result/binary, BinData2/binary>>)
+	end.
