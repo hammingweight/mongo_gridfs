@@ -25,8 +25,10 @@
 
 %% API
 -export([close/1,
+		 file_name/1,
 		 file_size/1,
-		 new/3]).
+		 new/3,
+		 md5/1]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -42,8 +44,14 @@
 close(Pid) ->
 	gen_server:call(Pid, close, infinity).
 
+file_name(Pid) ->
+	gen_server:call(Pid, file_name, infinity).
+	
 file_size(Pid) ->
 	gen_server:call(Pid, file_size, infinity).
+	
+md5(Pid) ->
+	gen_server:call(Pid, md5, infinity).
 	
 new(ConnectionParameters, Bucket, Id) ->
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id], []),
@@ -61,19 +69,14 @@ init([ConnectionParameters, Bucket, Id]) ->
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
 handle_call(file_size, _From, State) ->
-	Parameters = State#state.connection_parameters,
-	WriteMode = Parameters#gridfs_connection.write_mode,
-	ReadMode = Parameters#gridfs_connection.read_mode,
-	Database = Parameters#gridfs_connection.database,
-	Conn = Parameters#gridfs_connection.connection,
-	Coll = list_to_atom(atom_to_list(State#state.bucket) ++ ".files"),
-	Id = State#state.id,
-	{ok, Size} = mongo:do(WriteMode, ReadMode, Conn, Database, 
-						  fun() ->
-								  {{length, Size}} = mongo:find_one(Coll, {'_id', Id}, {'_id', 0, length, 1}),
-								  Size
-						  end),
-	{reply, {ok, Size}, State}.
+    Length = get_attribute(State, length),
+    {reply, {ok, Length}, State};
+handle_call(md5, _From, State) ->
+    Md5 = get_attribute(State, md5),
+    {reply, {ok, Md5}, State};
+handle_call(file_name, _From, State) ->
+    FileName = get_attribute(State, filename),
+    {reply, {ok, FileName}, State}.
 																		
 
 %% @doc Responds to asynchronous server calls.
@@ -93,3 +96,15 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+get_attribute(State, Attribute) ->
+	Coll = list_to_atom(atom_to_list(State#state.bucket) ++ ".files"),
+	Parameters = State#state.connection_parameters,
+	WriteMode = Parameters#gridfs_connection.write_mode,
+	ReadMode = Parameters#gridfs_connection.read_mode,
+	Conn = Parameters#gridfs_connection.connection,
+	Database = Parameters#gridfs_connection.database,
+	{ok, {{Attribute, Value}}} = mongo:do(WriteMode, ReadMode, Conn, Database,
+										  fun() ->
+												  mongo:find_one(Coll, {'_id', State#state.id}, {'_id', 0, Attribute, 1})
+										  end),
+	Value.
