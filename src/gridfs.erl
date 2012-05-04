@@ -37,6 +37,8 @@
 		 find_one/2,
 		 find/1,
 		 find/2,
+		 insert/2,
+		 insert/3,
 		 do/5]).
 
 %% gen_server callbacks
@@ -118,6 +120,18 @@ find(Bucket, Selector) ->
 	ConnectionParameters = get(gridfs_state),
 	gridfs_cursor:new(ConnectionParameters, Bucket, MongoCursor).
 	
+insert(FileName, FileData) ->
+	insert(fs, FileName, FileData).
+
+insert(Bucket, FileName, FileData) when is_binary(FileData) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
+	ObjectId = mongodb_app:gen_objectid(),
+	insert(ChunksColl, ObjectId, 0, FileData),
+	Md5 = list_to_binary(bin_to_hexstr(crypto:md5(FileData))),
+	mongo:insert(FilesColl, {'_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, 
+							 uploadDate, now(), md5, Md5, filename, FileName}).
+
 %% Server functions
 
 %% @doc Initializes the server with a write mode, read mode, a connection and database.
@@ -156,3 +170,15 @@ terminate(_Reason, _State) ->
 -spec(code_change(any(), State::#gridfs_connection{}, any()) -> {ok, State::#gridfs_connection{}}).
 code_change(_OldVersion, State, _Extra) ->
 	{ok, State}.
+
+
+%% Internal functions
+bin_to_hexstr(Bin) ->
+	lists:flatten([io_lib:format("~2.16.0b", [X]) || X <- binary_to_list(Bin)]).
+
+insert(Coll, ObjectId, N, Data) when size(Data) =< ?CHUNK_SIZE ->
+	mongo:insert(Coll, {'files_id', ObjectId, data, {bin, bin, Data}, n, N});
+insert(Coll, ObjectId, N, Data) ->
+	<<Data1:(?CHUNK_SIZE*8), Data2/binary>> = Data,
+	mongo:insert(Coll, {'files_id', ObjectId, data, {bin, bin, <<Data1:(?CHUNK_SIZE*8)>>}, n, N}),
+	insert(Coll, ObjectId, N+1, Data2).
