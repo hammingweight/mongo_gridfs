@@ -33,13 +33,13 @@
 		 delete/2,
 		 delete_one/1,
 		 delete_one/2,
+		 do/5,
 		 find_one/1,
 		 find_one/2,
 		 find/1,
 		 find/2,
 		 insert/2,
-		 insert/3,
-		 do/5]).
+		 insert/3]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -192,8 +192,6 @@ insert(Coll, ObjectId, N, Data) ->
 	mongo:insert(Coll, {'files_id', ObjectId, data, {bin, bin, <<Data1:(?CHUNK_SIZE*8)>>}, n, N}),
 	insert(Coll, ObjectId, N+1, Data2).
 
-%copy(_ChunksColl, _ObjectId, Size, N, _IoStream, Md5Context) when (N * ?CHUNK_SIZE) >= Size ->
-%	crypto:md5_final(Md5Context);
 copy(ChunksColl, ObjectId, N, IoStream, Md5Context, Size) ->
 	case file:pread(IoStream, N * ?CHUNK_SIZE, ?CHUNK_SIZE) of
 		eof ->
@@ -202,4 +200,3 @@ copy(ChunksColl, ObjectId, N, IoStream, Md5Context, Size) ->
 			mongo:insert(ChunksColl, {'files_id', ObjectId, data, {bin, bin, Data}, n, N}),
 			copy(ChunksColl, ObjectId, N+1, IoStream, crypto:md5_update(Md5Context, Data), Size+size(Data))
 	end.
-

@@ -96,11 +96,17 @@ handle_call(read_file, _From, State) ->
 handle_call({pread, Offset, NumToRead}, _From, State) ->
 	ChunkSize = get_attribute(State, chunkSize),
 	Length = get_attribute(State, length),
-	NumChunks = (Length + ChunkSize - 1) div ChunkSize, 
-	ChunkNum = Offset div ChunkSize,
-	ChunkOffset = Offset rem ChunkSize,
-	Reply = read(State, ChunkNum, ChunkOffset, NumToRead, NumChunks, <<>>),
-	{reply, {ok, Reply}, State}.
+	case Offset >= Length of
+		false ->
+			NumChunks = (Length + ChunkSize - 1) div ChunkSize,
+			ChunkNum = Offset div ChunkSize,
+			ChunkOffset = Offset rem ChunkSize,
+			Reply = read(State, ChunkNum, ChunkOffset, NumToRead, NumChunks, <<>>),
+			{reply, {ok, Reply}, State};
+		true ->
+			{reply, eof, State}
+	end.
+			
 
 %% @doc Responds to asynchronous server calls.
 handle_cast(_Msg, State) ->
