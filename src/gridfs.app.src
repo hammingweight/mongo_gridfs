@@ -1,0 +1,9 @@
+{application, gridfs,
+  [{description, "MongoDB GridFS Library Application"},
+   {vsn, "0.1.0"},
+   {modules, [gridfs,
+              gridfs_cursor,
+              gridfs_file]},
+   {registered,[]},
+   {applications, [kernel, stdlib]},
+   {start_phases, []}]}.
