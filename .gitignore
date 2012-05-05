@@ -1,4 +1,5 @@
 ebin/*.beam
 .project
 .settings
+_build
 
