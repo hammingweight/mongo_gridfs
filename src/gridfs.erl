@@ -130,7 +130,16 @@ insert(Bucket, FileName, FileData) when is_binary(FileData) ->
 	insert(ChunksColl, ObjectId, 0, FileData),
 	Md5 = list_to_binary(bin_to_hexstr(crypto:md5(FileData))),
 	mongo:insert(FilesColl, {'_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, 
-							 uploadDate, now(), md5, Md5, filename, FileName}).
+							 uploadDate, now(), md5, Md5, filename, FileName});
+insert(Bucket, FileName, IoStream) ->
+	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
+	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
+	ObjectId = mongodb_app:gen_objectid(),
+	{Md5, FileSize} = copy(ChunksColl, ObjectId, 0, IoStream, crypto:md5_init(), 0),
+	Md5Str = list_to_binary(bin_to_hexstr(Md5)),
+	file:close(IoStream),
+	mongo:insert(FilesColl, {'_id', ObjectId, length, FileSize, chunkSize, ?CHUNK_SIZE, 
+							 uploadDate, now(), md5, Md5Str, filename, FileName}).
 
 %% Server functions
 
@@ -182,3 +191,15 @@ insert(Coll, ObjectId, N, Data) ->
 	<<Data1:(?CHUNK_SIZE*8), Data2/binary>> = Data,
 	mongo:insert(Coll, {'files_id', ObjectId, data, {bin, bin, <<Data1:(?CHUNK_SIZE*8)>>}, n, N}),
 	insert(Coll, ObjectId, N+1, Data2).
+
+%copy(_ChunksColl, _ObjectId, Size, N, _IoStream, Md5Context) when (N * ?CHUNK_SIZE) >= Size ->
+%	crypto:md5_final(Md5Context);
+copy(ChunksColl, ObjectId, N, IoStream, Md5Context, Size) ->
+	case file:pread(IoStream, N * ?CHUNK_SIZE, ?CHUNK_SIZE) of
+		eof ->
+			{crypto:md5_final(Md5Context), Size};
+		{ok, Data} ->
+			mongo:insert(ChunksColl, {'files_id', ObjectId, data, {bin, bin, Data}, n, N}),
+			copy(ChunksColl, ObjectId, N+1, IoStream, crypto:md5_update(Md5Context, Data), Size+size(Data))
+	end.
+
