@@ -25,9 +25,10 @@
 
 %% API
 -export([close/1,
-		 new/3,
+		 new/4,
 		 next/1,
-		 rest/1]).
+		 rest/1,
+		 set_timeout/2]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -37,27 +38,34 @@
 		 terminate/2, 
 		 code_change/3]).
 
--record(state, {connection_parameters, bucket, mongo_cursor}).
+-record(state, {connection_parameters, bucket, mongo_cursor, parent_process, die_with_parent=true, timeout=infinity}).
 
 %% External functions
 close(Pid) ->
 	gen_server:call(Pid, close, infinity).
 	
-new(ConnectionParameters, Bucket, MongoCursor) ->
-	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, MongoCursor], []),
-	Pid.
+new(ConnectionParameters, Bucket, MongoCursor, ParentProcess) ->
+	{ok, Cursor} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, MongoCursor, ParentProcess], []),
+	Cursor.
 
-next(Pid) ->
-	gen_server:call(Pid, next, infinity).
+next(Cursor) ->
+	gen_server:call(Cursor, next, infinity).
 
-rest(Pid) ->
-	gen_server:call(Pid, rest, infinity).
+rest(Cursor) ->
+	gen_server:call(Cursor, rest, infinity).
 
+set_timeout(Cursor, Timeout) ->
+	gen_server:call(Cursor, {set_timeout, Timeout}, infinity).
+	
 %% Server functions
 
 %% @doc Initializes the server with connection parameters, a bucket and a mongo cursor.
-init([ConnectionParameters, Bucket, MongoCursor]) ->
-    {ok, #state{connection_parameters=ConnectionParameters, bucket=Bucket, mongo_cursor=MongoCursor}}.
+init([ConnectionParameters, Bucket, MongoCursor, ParentProcess]) ->
+	monitor(process, ParentProcess),
+    {ok, #state{connection_parameters=ConnectionParameters, 
+				bucket=Bucket, 
+				mongo_cursor=MongoCursor, 
+				parent_process=ParentProcess}}.
 
 %% @doc Responds synchronously to messages.
 handle_call(close, _From, State) ->
@@ -70,7 +78,7 @@ handle_call(next, _From, State) ->
 		{{'_id', Id}} ->
 			ConnectionParameters = State#state.connection_parameters,
 			Bucket = State#state.bucket,
-			{reply, gridfs_file:new(ConnectionParameters, Bucket, Id), State}
+			{reply, gridfs_file:new(ConnectionParameters, Bucket, Id), State, State#state.timeout}
 	end;
 handle_call(rest, _From, State) ->
 	MongoCursor = State#state.mongo_cursor,
@@ -78,15 +86,21 @@ handle_call(rest, _From, State) ->
 	ConnectionParameters = State#state.connection_parameters,
 	Bucket = State#state.bucket,
 	Reply = [gridfs_file:new(ConnectionParameters, Bucket, Id) || {'_id', Id} <- Ids],
-	{stop, normal, Reply, State}.
+	{stop, normal, Reply, State};
+handle_call({set_timeout, Timeout}, _From, State) ->
+	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout}.
 
 %% @doc Handles asynchronous messages.
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+    {noreply, State, State#state.timeout}.
 
 %% @doc Handles out-of-band messages.
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, State) when Pid =:= State#state.parent_process andalso State#state.die_with_parent ->
+	{stop, normal, State};
+handle_info(timeout, State) ->
+	{stop, normal, State};
 handle_info(_Info, State) ->
-    {noreply, State}.
+	{noreply, State, State#state.timeout}.
 
 %% @doc Shuts down the server.
 terminate(_Reason, _State) ->

@@ -118,7 +118,7 @@ find(Bucket, Selector) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	MongoCursor = mongo:find(FilesColl, Selector, {'_id', 1}),
 	ConnectionParameters = get(gridfs_state),
-	gridfs_cursor:new(ConnectionParameters, Bucket, MongoCursor).
+	gridfs_cursor:new(ConnectionParameters, Bucket, MongoCursor, self()).
 	
 insert(FileName, FileData) ->
 	insert(fs, FileName, FileData).
