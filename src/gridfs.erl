@@ -109,7 +109,7 @@ find_one(Bucket, Selector) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	{{'_id', Id}} = mongo:find_one(FilesColl, Selector, {'_id', 1}),
 	ConnectionParameters = get(gridfs_state),
-	gridfs_file:new(ConnectionParameters, Bucket, Id).
+	gridfs_file:new(ConnectionParameters, Bucket, Id, self()).
 
 find(Selector) ->
 	find(fs, Selector).

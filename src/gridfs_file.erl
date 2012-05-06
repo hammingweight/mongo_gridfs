@@ -27,10 +27,11 @@
 -export([close/1,
 		 file_name/1,
 		 file_size/1,
-		 new/3,
+		 new/4,
 		 md5/1,
 		 pread/3,
-		 read_file/1]).
+		 read_file/1,
+		 set_timeout/2]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -40,7 +41,7 @@
 		 terminate/2, 
 		 code_change/3]).
 
--record(state, {connection_parameters, bucket, id}).
+-record(state, {connection_parameters, bucket, id, parent_process, die_with_parent=true, timeout=infinity}).
 
 %% External functions
 close(Pid) ->
@@ -55,8 +56,8 @@ file_size(Pid) ->
 md5(Pid) ->
 	gen_server:call(Pid, md5, infinity).
 	
-new(ConnectionParameters, Bucket, Id) ->
-	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id], []),
+new(ConnectionParameters, Bucket, Id, ParentProcess) ->
+	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id, ParentProcess], []),
 	Pid.
 
 pread(Pid, Offset, Length) ->
@@ -66,12 +67,16 @@ read_file(Pid) ->
 	Data = gen_server:call(Pid, read_file, infinity),
 	Data.
 	
+set_timeout(Pid, Timeout) ->
+	gen_server:call(Pid, {set_timeout, Timeout}, infinity).
+	
 
 %% Server functions
 
 %% @doc Initializes the server with connection parameters, a bucket and an ID.
-init([ConnectionParameters, Bucket, Id]) ->
-	State = #state{connection_parameters=ConnectionParameters, bucket=Bucket, id=Id},
+init([ConnectionParameters, Bucket, Id, ParentProcess]) ->
+	monitor(process, ParentProcess),
+	State = #state{connection_parameters=ConnectionParameters, bucket=Bucket, id=Id, parent_process=ParentProcess},
     {ok, State}.
 
 
@@ -80,19 +85,19 @@ handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
 handle_call(file_size, _From, State) ->
     Length = get_attribute(State, length),
-    {reply, {ok, Length}, State};
+    {reply, {ok, Length}, State, State#state.timeout};
 handle_call(md5, _From, State) ->
     Md5 = get_attribute(State, md5),
-    {reply, {ok, Md5}, State};
+    {reply, {ok, Md5}, State, State#state.timeout};
 handle_call(file_name, _From, State) ->
     FileName = get_attribute(State, filename),
-    {reply, {ok, FileName}, State};
+    {reply, {ok, FileName}, State, State#state.timeout};
 handle_call(read_file, _From, State) ->
 	ChunkSize = get_attribute(State, chunkSize),
 	Length = get_attribute(State, length),
 	NumChunks = (Length + ChunkSize - 1) div ChunkSize, 
 	Reply = read(State, 0, 0, Length, NumChunks, <<>>),
-	{reply, {ok, Reply}, State};
+	{reply, {ok, Reply}, State, State#state.timeout};
 handle_call({pread, Offset, NumToRead}, _From, State) ->
 	ChunkSize = get_attribute(State, chunkSize),
 	Length = get_attribute(State, length),
@@ -102,19 +107,25 @@ handle_call({pread, Offset, NumToRead}, _From, State) ->
 			ChunkNum = Offset div ChunkSize,
 			ChunkOffset = Offset rem ChunkSize,
 			Reply = read(State, ChunkNum, ChunkOffset, NumToRead, NumChunks, <<>>),
-			{reply, {ok, Reply}, State};
+			{reply, {ok, Reply}, State, State#state.timeout};
 		true ->
-			{reply, eof, State}
-	end.
+			{reply, eof, State, State#state.timeout}
+	end;
+handle_call({set_timeout, Timeout}, _From, State) ->
+	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout}.
 			
 
 %% @doc Responds to asynchronous server calls.
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+    {noreply, State, State#state.timeout}.
 
 %% @doc Responds to out-of-band messages. The server ignores any such messages.
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, State) when Pid =:= State#state.parent_process andalso State#state.die_with_parent ->
+	{stop, normal, State};
+handle_info(timeout, State) ->
+	{stop, normal, State};
 handle_info(_Info, State) ->
-    {noreply, State}.
+	{noreply, State, State#state.timeout}.
 
 %% @doc Handles the shutdown of the server.
 terminate(_Reason, _State) ->

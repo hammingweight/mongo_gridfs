@@ -76,16 +76,12 @@ handle_call(next, _From, State) ->
 		{} ->
 			{stop, normal, {}, State};
 		{{'_id', Id}} ->
-			ConnectionParameters = State#state.connection_parameters,
-			Bucket = State#state.bucket,
-			{reply, gridfs_file:new(ConnectionParameters, Bucket, Id), State, State#state.timeout}
+			{reply, create_file(State, Id), State, State#state.timeout}
 	end;
 handle_call(rest, _From, State) ->
 	MongoCursor = State#state.mongo_cursor,
 	Ids = mongo_cursor:rest(MongoCursor),
-	ConnectionParameters = State#state.connection_parameters,
-	Bucket = State#state.bucket,
-	Reply = [gridfs_file:new(ConnectionParameters, Bucket, Id) || {'_id', Id} <- Ids],
+	Reply = [create_file(State, Id) || {'_id', Id} <- Ids],
 	{stop, normal, Reply, State};
 handle_call({set_timeout, Timeout}, _From, State) ->
 	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout}.
@@ -110,3 +106,16 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+%% Internal functions
+create_file(State, Id) ->
+	ConnectionParameters = State#state.connection_parameters,
+	ParentProcess = State#state.parent_process,
+	Bucket = State#state.bucket,
+	File = gridfs_file:new(ConnectionParameters, Bucket, Id, ParentProcess),
+	case State#state.die_with_parent of
+		true ->
+			File;
+		false ->
+			gridfs_file:set_timeout(File, State#state.timeout),
+			File
+	end.
