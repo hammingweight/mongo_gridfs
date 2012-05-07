@@ -28,7 +28,8 @@
 		 new/4,
 		 next/1,
 		 rest/1,
-		 set_timeout/2]).
+		 set_timeout/2,
+		 take/2]).
 
 %% gen_server callbacks
 -export([init/1, 
@@ -57,6 +58,9 @@ rest(Cursor) ->
 set_timeout(Cursor, Timeout) ->
 	gen_server:call(Cursor, {set_timeout, Timeout}, infinity).
 	
+take(Limit, Cursor) when Limit >= 0 ->
+	gen_server:call(Cursor, {take, Limit}, infinity).
+
 %% Server functions
 
 %% @doc Initializes the server with connection parameters, a bucket and a mongo cursor.
@@ -84,7 +88,10 @@ handle_call(rest, _From, State) ->
 	Reply = [create_file(State, Id) || {'_id', Id} <- Ids],
 	{stop, normal, Reply, State};
 handle_call({set_timeout, Timeout}, _From, State) ->
-	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout}.
+	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout};
+handle_call({take, Limit}, _From, State) ->
+	Files = take(State, Limit, []),
+	{stop, normal, Files, State}.
 
 %% @doc Handles asynchronous messages.
 handle_cast(_Msg, State) ->
@@ -118,4 +125,17 @@ create_file(State, Id) ->
 		false ->
 			gridfs_file:set_timeout(File, State#state.timeout),
 			File
+	end.
+
+% Reads files from a cursor up to a limit and returns them as a list.
+take(_State, 0, Files) ->
+	lists:reverse(Files);
+take(State, Limit, Files) ->
+	MongoCursor = State#state.mongo_cursor,
+	case mongo_cursor:next(MongoCursor) of
+		{} ->
+			lists:reverse(Files);
+		{{'_id', Id}} ->
+			File = create_file(State, Id),
+			take(State, Limit-1, [File|Files])
 	end.
