@@ -39,27 +39,48 @@
 		 terminate/2, 
 		 code_change/3]).
 
+%% Records
 -record(state, {connection_parameters, bucket, mongo_cursor, parent_process, die_with_parent=true, timeout=infinity}).
 
+%% Types
+-type(cursor() :: pid()).
+-type(file() :: pid()).
+-type(bucket() :: atom()).
+
 %% External functions
+%% @doc Closes a cursor.
+-spec(close(cursor()) -> ok).
 close(Pid) ->
 	gen_server:call(Pid, close, infinity).
-	
+
+%% @doc Creates a cursor using a specified connection to a database collection of files.
+-spec(new(#gridfs_connection{}, bucket(), mongo:cursor(), pid()) -> cursor()).
 new(ConnectionParameters, Bucket, MongoCursor, ParentProcess) ->
 	{ok, Cursor} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, MongoCursor, ParentProcess], []),
 	Cursor.
 
+%% @doc Returns the next GridFS file from a cursor or an empty tuple if there are no further
+%%      files.
+-spec(next(cursor()) -> file()|{}).
 next(Cursor) ->
 	gen_server:call(Cursor, next, infinity).
 
+%% @doc Returns all GridFS files from a cursor.
+-spec(rest(cursor()) -> [file()]).
 rest(Cursor) ->
 	gen_server:call(Cursor, rest, infinity).
 
+%% @doc Sets a timeout for a cursor. If the cursor is not read within the specified time,
+%%      the cursor is closed.
+-spec(set_timeout(cursor(), integer()) -> ok).
 set_timeout(Cursor, Timeout) ->
 	gen_server:call(Cursor, {set_timeout, Timeout}, infinity).
 	
+%% @doc Retrieves GridFS files from a cursor up to the specified maximum number.
+-spec(take(integer(), cursor()) -> [file()]).
 take(Limit, Cursor) when Limit >= 0 ->
 	gen_server:call(Cursor, {take, Limit}, infinity).
+
 
 %% Server functions
 
