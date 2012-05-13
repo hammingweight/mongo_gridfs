@@ -26,7 +26,6 @@
 
 %% Types
 -type(action() :: fun()).
--type(gridfs_file() :: pid()).
 
 %% API
 -export([delete/1,
@@ -104,7 +103,7 @@ find_one(Selector) ->
 	find_one(fs, Selector).
 
 %@doc Finds the first file matching the selector from the specified bucket.
--spec(find_one(atom(), bson:document()) -> gridfs_file()).
+-spec(find_one(atom(), bson:document()) -> file()).
 find_one(Bucket, Selector) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	{{'_id', Id}} = mongo:find_one(FilesColl, Selector, {'_id', 1}),
