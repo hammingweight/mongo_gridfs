@@ -42,11 +42,6 @@
 %% Records
 -record(state, {connection_parameters, bucket, mongo_cursor, parent_process, die_with_parent=true, timeout=infinity}).
 
-%% Types
--type(cursor() :: pid()).
--type(file() :: pid()).
--type(bucket() :: atom()).
-
 %% External functions
 %% @doc Closes a cursor.
 -spec(close(cursor()) -> ok).
@@ -87,12 +82,16 @@ take(Limit, Cursor) when Limit >= 0 ->
 %% @doc Initializes the server with connection parameters, a bucket and a mongo cursor.
 init([ConnectionParameters, Bucket, MongoCursor, ParentProcess]) ->
 	monitor(process, ParentProcess),
-    {ok, #state{connection_parameters=ConnectionParameters, 
+    {ok, 
+	 #state{connection_parameters=ConnectionParameters, 
 				bucket=Bucket, 
 				mongo_cursor=MongoCursor, 
-				parent_process=ParentProcess}}.
+				parent_process=ParentProcess}, 
+	 infinity}.
 
-%% @doc Responds synchronously to messages.
+%% @doc Responds to synchronous messages. Synchronous messages are sent to get the next file,
+%%      to get remaining files, to get the mongo:cursor(), to close the cursor and to set
+%%      the timeout of the cursor.
 handle_call(close, _From, State) ->
 	{stop, normal, ok, State};
 handle_call(next, _From, State) ->
@@ -114,11 +113,13 @@ handle_call({take, Limit}, _From, State) ->
 	Files = take(State, Limit, []),
 	{stop, normal, Files, State}.
 
-%% @doc Handles asynchronous messages.
+%% @doc Responds asynchronously to messages. The module does not expect to receive asynchronous
+%%      messages.
 handle_cast(_Msg, State) ->
     {noreply, State, State#state.timeout}.
 
-%% @doc Handles out-of-band messages.
+%% @doc Responds to non-OTP messages. The messages that are handled are a timeout and the
+%%      the termination of the parent process.
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, State) when Pid =:= State#state.parent_process andalso State#state.die_with_parent ->
 	{stop, normal, State};
 handle_info(timeout, State) ->

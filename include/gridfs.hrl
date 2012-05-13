@@ -13,3 +13,8 @@
 -define(CHUNK_SIZE, 262144).
 
 -record(gridfs_connection, {database, connection, write_mode, read_mode}).
+
+%% Types
+-type(cursor() :: pid()).
+-type(file() :: pid()).
+-type(bucket() :: atom()).
