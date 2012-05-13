@@ -44,29 +44,47 @@
 -record(state, {connection_parameters, bucket, id, parent_process, die_with_parent=true, timeout=infinity}).
 
 %% External functions
+%% @doc Closes a file.
+-spec(close(file()) -> ok).
 close(Pid) ->
 	gen_server:call(Pid, close, infinity).
 
+%% @doc Returns the name of the file; i.e. the value of the file_name attribute.
+-spec(file_name(file()) -> binary()).
 file_name(Pid) ->
 	gen_server:call(Pid, file_name, infinity).
 	
+%% @doc Returns the size of the file in bytes.
+-spec(file_size(file()) -> integer()).
 file_size(Pid) ->
 	gen_server:call(Pid, file_size, infinity).
 	
+%% @doc Returns the MD5 checksum of the file.
+-spec(md5(file()) -> binary()).
 md5(Pid) ->
 	gen_server:call(Pid, md5, infinity).
 	
+%% @doc Opens a file using a specified connection to a database. The file is identified by
+%%      its ID.
+-spec(new(#gridfs_connection{}, bucket(), bson:value(), pid()) -> file()).
 new(ConnectionParameters, Bucket, Id, ParentProcess) ->
 	{ok, Pid} = gen_server:start_link(?MODULE, [ConnectionParameters, Bucket, Id, ParentProcess], []),
 	Pid.
 
+%% @doc Reads bytes from an offset up to a maximum length.
+-spec(pread(file(), integer(), integer()) -> binary()).
 pread(Pid, Offset, Length) ->
 	gen_server:call(Pid, {pread, Offset, Length}, infinity).
 
+%% @doc Reads the whole contents of a file.
+-spec(read_file(file()) -> binary()).
 read_file(Pid) ->
 	Data = gen_server:call(Pid, read_file, infinity),
 	Data.
 	
+%% @doc Sets the timeout for a file. If the file isn't accessed within the specified time,
+%%      the file is closed.
+-spec(set_timeout(file(), integer()) -> ok).
 set_timeout(Pid, Timeout) ->
 	gen_server:call(Pid, {set_timeout, Timeout}, infinity).
 	
@@ -77,7 +95,7 @@ set_timeout(Pid, Timeout) ->
 init([ConnectionParameters, Bucket, Id, ParentProcess]) ->
 	monitor(process, ParentProcess),
 	State = #state{connection_parameters=ConnectionParameters, bucket=Bucket, id=Id, parent_process=ParentProcess},
-    {ok, State}.
+    {ok, State, infinity}.
 
 
 %% @doc Responds synchronously to server calls.
@@ -115,7 +133,8 @@ handle_call({set_timeout, Timeout}, _From, State) ->
 	{reply, ok, State#state{die_with_parent=false, timeout=Timeout}, Timeout}.
 			
 
-%% @doc Responds to asynchronous server calls.
+%% @doc Responds to asynchronous server calls. This process doesn't expect any
+%%      asynchronous calls.
 handle_cast(_Msg, State) ->
     {noreply, State, State#state.timeout}.
 
@@ -136,6 +155,8 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+%% Internal functions
 get_attribute(State, Attribute) ->
 	Coll = list_to_atom(atom_to_list(State#state.bucket) ++ ".files"),
 	Parameters = State#state.connection_parameters,
