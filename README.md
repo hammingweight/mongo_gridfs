@@ -73,7 +73,3 @@ must set a timeout on the process. The example code below gets a file and sets a
 
 ##### Deleting Files
 Deleting files can be done with the `delete` and `delete_one` functions.
-
-An importan  
-
-
