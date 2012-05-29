@@ -1,0 +1,12 @@
+@author CA Meijer <hammingweight@gmail.com>
+@copyright 2012 CA Meijer
+@version 0.1.1
+@title mongo_gridfs
+
+@doc
+== Introduction ==
+
+mongo_gridfs is an OTP application library for accessing files stored in MongoDB using the GridFS convention. The
+mongo_gridfs API is similar to the official <a href="http://api.mongodb.org/erlang/mongodb/">MongoDB driver</a> but 
+create, read and delete operations operate on files rather than documents.
+
