@@ -98,7 +98,7 @@ do(WriteMode, ReadMode, Connection, Database, Action) ->
 	gen_server:call(Pid, {do, Action}, infinity).
 
 %@doc Finds the first file matching the selector from the fs.files and fs.chunks collections.
--spec(find_one(bson:document()) -> pid()).
+-spec(find_one(bson:document()) -> file()).
 find_one(Selector) ->
 	find_one(fs, Selector).
 
@@ -110,18 +110,30 @@ find_one(Bucket, Selector) ->
 	ConnectionParameters = get(gridfs_state),
 	gridfs_file:new(ConnectionParameters, Bucket, Id, self()).
 
+%@doc Finds files matching the selector from the fs.files and fs.chunks collections
+%     and returns a cursor.
+-spec(find(bson:document()) -> cursor()).
 find(Selector) ->
 	find(fs, Selector).
 
+%@doc Finds files matching the selector from the specified bucket
+%     and returns a cursor.
+-spec(find(atom(), bson:document()) -> cursor()).
 find(Bucket, Selector) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	MongoCursor = mongo:find(FilesColl, Selector, {'_id', 1}),
 	ConnectionParameters = get(gridfs_state),
 	gridfs_cursor:new(ConnectionParameters, Bucket, MongoCursor, self()).
 	
+%@doc Inserts a file with a specified name into the default bucket.
+%     The file contents can be passed as either data or a file process opened for
+%     reading.
 insert(FileName, FileData) ->
 	insert(fs, FileName, FileData).
 
+%@doc Inserts a file with a specified name into the specified bucket.
+%     The file contents can be passed as either data or a file process opened for
+%     reading.
 insert(Bucket, FileName, FileData) when is_binary(FileData) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
