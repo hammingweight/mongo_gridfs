@@ -1,6 +1,6 @@
 {application, gridfs,
   [{description, "MongoDB GridFS Library Application"},
-   {vsn, "0.1.0"},
+   {vsn, "0.1.1"},
    {modules, [gridfs,
               gridfs_cursor,
               gridfs_file]},
