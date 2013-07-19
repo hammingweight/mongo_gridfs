@@ -141,7 +141,7 @@ insert(Bucket, FileName, FileData) when is_binary(FileData) ->
 	insert(ChunksColl, ObjectId, 0, FileData),
 	Md5 = list_to_binary(bin_to_hexstr(crypto:md5(FileData))),
 	mongo:insert(FilesColl, {'_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, 
-							 uploadDate, now(), md5, Md5, filename, FileName});
+							 uploadDate, now(), md5, Md5, mailObject, FileName});
 insert(Bucket, FileName, IoStream) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
