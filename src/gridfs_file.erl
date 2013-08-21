@@ -104,6 +104,9 @@ handle_call(close, _From, State) ->
 handle_call(file_size, _From, State) ->
     Length = get_attribute(State, length),
     {reply, {ok, Length}, State, State#state.timeout};
+handle_call({get_attr, Attr}, _From, State) ->
+    FoundAttr = get_attribute(State, Attr),
+    {reply, {ok, FoundAttr}, State, State#state.timeout};
 handle_call(md5, _From, State) ->
     Md5 = get_attribute(State, md5),
     {reply, {ok, Md5}, State, State#state.timeout};
