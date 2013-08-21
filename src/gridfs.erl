@@ -38,6 +38,7 @@
 		 find/1,
 		 find/2,
 		 insert/2,
+         insert_with_bson/2,
 		 insert/3]).
 
 %% gen_server callbacks
@@ -129,28 +130,47 @@ find(Bucket, Selector) ->
 %     The file contents can be passed as either data or a file process opened for
 %     reading.
 insert(FileName, FileData) ->
-	insert(fs, FileName, FileData).
+	insert_with_bson({filename, FileName}, FileData).
 
-%@doc Inserts a file with a specified name into the specified bucket.
+%@doc Inserts a file with a specified bson document into the default bucket.
 %     The file contents can be passed as either data or a file process opened for
 %     reading.
-insert(Bucket, FileName, FileData) when is_binary(FileData) ->
+
+insert_with_bson(BsonDocument, FileData) ->
+    insert(fs, BsonDocument, FileData).
+
+%@doc Inserts a file with a bson document or filename into the specified bucket.
+%     The file contents can be passed as either data or a file process opened for
+%     reading.
+
+insert(Bucket, FileName, FileData) when not is_tuple(FileName) ->
+    insert(Bucket, {filename, FileName}, FileData);
+insert(Bucket, Bson, FileData) when is_binary(FileData) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
 	ObjectId = mongodb_app:gen_objectid(),
 	insert(ChunksColl, ObjectId, 0, FileData),
 	Md5 = list_to_binary(bin_to_hexstr(crypto:md5(FileData))),
-	mongo:insert(FilesColl, {'_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, 
-							 uploadDate, now(), md5, Md5, filename, FileName});
-insert(Bucket, FileName, IoStream) ->
+    ListBson=tuple_to_list(Bson),
+    ListFileAttr=['_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, uploadDate, now(), md5, Md5],
+    UnifiedList=lists:append([ListFileAttr, ListBson]),
+	mongo:insert(FilesColl, list_to_tuple(UnifiedList));
+insert(Bucket, Bson, IoStream) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
 	ObjectId = mongodb_app:gen_objectid(),
 	{Md5, FileSize} = copy(ChunksColl, ObjectId, 0, IoStream, crypto:md5_init(), 0),
 	Md5Str = list_to_binary(bin_to_hexstr(Md5)),
 	file:close(IoStream),
-	mongo:insert(FilesColl, {'_id', ObjectId, length, FileSize, chunkSize, ?CHUNK_SIZE, 
-							 uploadDate, now(), md5, Md5Str, filename, FileName}).
+    ListBson=tuple_to_list(Bson),
+    ListFileAttr=['_id', ObjectId, length, FileSize, chunkSize, ?CHUNK_SIZE, 
+							 uploadDate, now(), md5, Md5Str],
+    UnifiedList=lists:append([ListFileAttr, ListBson]),
+	mongo:insert(FilesColl, list_to_tuple(UnifiedList)).
+
+
+
+
 
 %% Server functions
 
