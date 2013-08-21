@@ -38,7 +38,7 @@
 		 find/1,
 		 find/2,
 		 insert/2,
-         insert_with_params/2,
+         insert_with_bson/2,
 		 insert/3]).
 
 %% gen_server callbacks
@@ -130,13 +130,13 @@ find(Bucket, Selector) ->
 %     The file contents can be passed as either data or a file process opened for
 %     reading.
 insert(FileName, FileData) ->
-	insert_with_params({filename, FileName}, FileData).
+	insert_with_bson({filename, FileName}, FileData).
 
 %@doc Inserts a file with a specified bson document into the default bucket.
 %     The file contents can be passed as either data or a file process opened for
 %     reading.
 
-insert_with_params(BsonDocument, FileData) ->
+insert_with_bson(BsonDocument, FileData) ->
     insert(fs, BsonDocument, FileData).
 
 %@doc Inserts a file with a bson document or filename into the specified bucket.
