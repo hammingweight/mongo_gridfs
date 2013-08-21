@@ -2,4 +2,4 @@ ebin/*.beam
 .project
 .settings
 _build
-
+.DS_Store
