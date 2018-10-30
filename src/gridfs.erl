@@ -150,7 +150,7 @@ insert(Bucket, Bson, FileData) when is_binary(FileData) ->
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
 	ObjectId = mongodb_app:gen_objectid(),
 	insert(ChunksColl, ObjectId, 0, FileData),
-	Md5 = list_to_binary(bin_to_hexstr(crypto:md5(FileData))),
+	Md5 = list_to_binary(bin_to_hexstr(crypto:hash(md5,FileData))),
     ListBson=tuple_to_list(Bson),
     ListFileAttr=['_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, uploadDate, now(), md5, Md5],
     UnifiedList=lists:append([ListFileAttr, ListBson]),
@@ -159,7 +159,7 @@ insert(Bucket, Bson, IoStream) ->
 	FilesColl = list_to_atom(atom_to_list(Bucket) ++ ".files"),
 	ChunksColl = list_to_atom(atom_to_list(Bucket) ++ ".chunks"),
 	ObjectId = mongodb_app:gen_objectid(),
-	{Md5, FileSize} = copy(ChunksColl, ObjectId, 0, IoStream, crypto:md5_init(), 0),
+	{Md5, FileSize} = copy(ChunksColl, ObjectId, 0, IoStream, crypto:hash_init(md5), 0),
 	Md5Str = list_to_binary(bin_to_hexstr(Md5)),
 	file:close(IoStream),
     ListBson=tuple_to_list(Bson),
@@ -226,8 +226,8 @@ insert(Coll, ObjectId, N, Data) ->
 copy(ChunksColl, ObjectId, N, IoStream, Md5Context, Size) ->
 	case file:pread(IoStream, N * ?CHUNK_SIZE, ?CHUNK_SIZE) of
 		eof ->
-			{crypto:md5_final(Md5Context), Size};
+			{crypto:hash_final(Md5Context), Size};
 		{ok, Data} ->
 			mongo:insert(ChunksColl, {'files_id', ObjectId, data, {bin, bin, Data}, n, N}),
-			copy(ChunksColl, ObjectId, N+1, IoStream, crypto:md5_update(Md5Context, Data), Size+size(Data))
+			copy(ChunksColl, ObjectId, N+1, IoStream, crypto:hash_update(Md5Context, Data), Size+size(Data))
 	end.
