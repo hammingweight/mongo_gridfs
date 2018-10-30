@@ -152,7 +152,7 @@ insert(Bucket, Bson, FileData) when is_binary(FileData) ->
 	insert(ChunksColl, ObjectId, 0, FileData),
 	Md5 = list_to_binary(bin_to_hexstr(crypto:hash(md5,FileData))),
     ListBson=tuple_to_list(Bson),
-    ListFileAttr=['_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, uploadDate, now(), md5, Md5],
+    ListFileAttr=['_id', ObjectId, length, size(FileData), chunkSize, ?CHUNK_SIZE, uploadDate, erlang:timestamp(), md5, Md5],
     UnifiedList=lists:append([ListFileAttr, ListBson]),
 	mongo:insert(FilesColl, list_to_tuple(UnifiedList));
 insert(Bucket, Bson, IoStream) ->
@@ -164,7 +164,7 @@ insert(Bucket, Bson, IoStream) ->
 	file:close(IoStream),
     ListBson=tuple_to_list(Bson),
     ListFileAttr=['_id', ObjectId, length, FileSize, chunkSize, ?CHUNK_SIZE, 
-							 uploadDate, now(), md5, Md5Str],
+							 uploadDate, erlang:timestamp(), md5, Md5Str],
     UnifiedList=lists:append([ListFileAttr, ListBson]),
 	mongo:insert(FilesColl, list_to_tuple(UnifiedList)).
 
