@@ -3,3 +3,6 @@ ebin/*.beam
 .settings
 _build
 .DS_Store
+rebar.config
+rebar.lock
+
